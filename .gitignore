@@ -22,3 +22,30 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python backend
+# Virtual environments and Python cache files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Local environment files and secrets (keep templates commit-able)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local databases, dumps, logs, and private credentials
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+*.log
+logs/
+*.pem
+*.key
+*.p12
+*.pfx

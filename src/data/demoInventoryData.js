@@ -1,6 +1,6 @@
 // UI-only inventory preview for ingredients and counted supplies. Values and statuses are fictional.
 // TODO (MANUAL): Replace these rows with inventory and stock-movement API responses later.
-// Base units shown here are g (mass), ml (volume), and pcs (count); no conversions are performed.
+// Base units shown here are g (mass), ml (volume), and pcs (count). Live inventory converts kg/g and L/ml; piece counts remain 1-to-1.
 export const demoIngredients = [
   { id: 'ing-101', name: 'Espresso beans', code: 'ING-101', kind: 'Ingredient', quantity: '8,400', unit: 'g', reorderLevel: '2,000 g', status: 'In stock', updated: 'Today, 9:15 AM' },
   { id: 'ing-102', name: 'Whole milk', code: 'ING-102', kind: 'Ingredient', quantity: '12,500', unit: 'ml', reorderLevel: '3,000 ml', status: 'In stock', updated: 'Today, 8:42 AM' },
@@ -23,5 +23,5 @@ export const demoStockMovements = [
   { id: 'MOV-0205', ingredient: 'Whole milk', code: 'ING-102', type: 'Sale use', quantity: '-360', unit: 'ml', reason: 'Demo sale reference', supplier: '—', date: 'Yesterday, 2:18 PM' },
 ]
 
-// Display-only conversion guide from the revised plan. No conversion behavior is implemented.
+// Display-only reference values for the UI preview; live inventory conversions are handled by the API.
 export const demoUnitGuides = ['1 kg = 1,000 g', '1 L = 1,000 ml']

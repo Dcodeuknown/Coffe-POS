@@ -1,7 +1,25 @@
-import { Clock3, CreditCard, History, ShoppingBag } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Clock3, CreditCard, History, LogOut, ShoppingBag } from 'lucide-react'
 
 function CashierLayout({ children }) {
   const currentPath = window.location.pathname
+  const [currentUser, setCurrentUser] = useState(null)
+
+  useEffect(() => {
+    const token = sessionStorage.getItem('access_token')
+    if (!token) return
+    fetch('http://127.0.0.1:8000/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => response.ok ? response.json() : null)
+      .then((user) => setCurrentUser(user))
+      .catch(() => setCurrentUser(null))
+  }, [])
+
+  function signOut() {
+    sessionStorage.removeItem('access_token')
+    sessionStorage.removeItem('pos_cart')
+    sessionStorage.removeItem('pos_last_sale')
+    window.location.assign('/login')
+  }
 
   return (
     <div className="workspace cashier-workspace">
@@ -22,7 +40,7 @@ function CashierLayout({ children }) {
           </a>
           <a className={`workspace-nav-item${currentPath === '/cashier/checkout' ? ' is-active' : ''}`} href="/cashier/checkout" aria-current={currentPath === '/cashier/checkout' ? 'page' : undefined}>
             <CreditCard size={17} aria-hidden="true" />
-            <span>Checkout preview</span>
+            <span>Checkout</span>
           </a>
           <a className={`workspace-nav-item${currentPath === '/cashier/sales' ? ' is-active' : ''}`} href="/cashier/sales" aria-current={currentPath === '/cashier/sales' ? 'page' : undefined}>
             <History size={17} aria-hidden="true" />
@@ -33,8 +51,8 @@ function CashierLayout({ children }) {
         <div className="sidebar-bottom">
           <div className="sidebar-preview-icon"><Clock3 size={17} /></div>
           <div>
-            <strong>No active session</strong>
-            <span>This preview is not connected to a cashier account.</span>
+            <strong>{currentUser?.full_name || 'No active session'}</strong>
+            <span>{currentUser ? 'Signed in to the cashier workspace.' : 'Sign in to load the live register and sales.'}</span>
           </div>
         </div>
       </aside>
@@ -43,8 +61,8 @@ function CashierLayout({ children }) {
         <header className="workspace-topbar">
           <div className="workspace-breadcrumb"><span>Workspace</span><span>/</span><strong>Cashier</strong></div>
           <div className="topbar-actions">
-            <span className="preview-pill"><span className="status-dot" />UI preview</span>
-            <a className="topbar-login-link" href="/login">Cashier sign in</a>
+            <span className="preview-pill"><span className="status-dot" />{currentUser ? 'Cashier session' : 'Sign in required'}</span>
+            {currentUser ? <button className="topbar-login-link" type="button" onClick={signOut}><LogOut size={14} /> Sign out</button> : <a className="topbar-login-link" href="/login">Cashier sign in</a>}
           </div>
         </header>
         <main className="workspace-content">{children}</main>

@@ -1,0 +1,6 @@
+fastapi[standard]
+SQLAlchemy>=2.0,<3.0
+PyMySQL
+python-dotenv
+pwdlib[argon2]
+PyJWT

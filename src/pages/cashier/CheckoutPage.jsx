@@ -1,238 +1,122 @@
-import { useState } from 'react'
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CreditCard, FileText, Smartphone, Wallet, X } from 'lucide-react'
+﻿import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, Check, CreditCard, FileText, Smartphone, Wallet } from 'lucide-react'
 import CashierLayout from '../../layouts/CashierLayout.jsx'
-import { demoCartItems, demoCartOrderType, demoCheckoutFeedback, demoPosTotals, demoReceiptNumber } from '../../data/demoPosData.js'
 
+const API_URL = 'http://127.0.0.1:8000'
+const CART_STORAGE_KEY = 'pos_cart'
+const LAST_SALE_KEY = 'pos_last_sale'
 const paymentMethods = [
-  { id: 'cash', label: 'Cash', detail: 'Cash tender preview', icon: Wallet },
-  { id: 'card', label: 'Card', detail: 'Record card payment', icon: CreditCard },
-  { id: 'ewallet', label: 'E-wallet', detail: 'Record e-wallet payment', icon: Smartphone },
+  { id: 'cash', label: 'Cash', detail: 'Record cash received', icon: Wallet },
+  { id: 'card', label: 'Card', detail: 'Record manually confirmed card payment', icon: CreditCard },
+  { id: 'ewallet', label: 'E-wallet', detail: 'Record manually confirmed e-wallet payment', icon: Smartphone },
 ]
 
-function CheckoutConfirmationDialog({ paymentLabel, onClose, onConfirm }) {
-  return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose()
-    }}>
-      <section className="catalog-dialog checkout-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-confirm-title">
-        <div className="dialog-heading">
-          <div>
-            <span className="checkout-confirm-icon"><Check size={19} aria-hidden="true" /></span>
-            <h2 id="checkout-confirm-title">Review this demo order?</h2>
-          </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close checkout confirmation"><X size={18} /></button>
-        </div>
-        <p className="checkout-confirm-copy">This preview shows the confirmation step. It will not create a sale, record payment, or deduct ingredients.</p>
-        <div className="checkout-confirm-summary">
-          <span>Order type <strong>{demoCartOrderType}</strong></span>
-          <span>Payment method <strong>{paymentLabel}</strong></span>
-          <span>Demo total <strong>{demoPosTotals.total}</strong></span>
-        </div>
-        <div className="dialog-actions">
-          <button className="catalog-button button-quiet" type="button" onClick={onClose}>Go back</button>
-          <button className="catalog-button button-primary" type="button" onClick={onConfirm}>Confirm preview</button>
-        </div>
-      </section>
-    </div>
-  )
+function formatAmount(value) {
+  if (value === null || value === undefined || value === '') return '—'
+  const amount = Number(value)
+  return Number.isFinite(amount) ? amount.toFixed(2) : '—'
 }
 
-function ReceiptPreviewDialog({ paymentLabel, onClose, onPrint }) {
-  return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose()
-    }}>
-      <section className="catalog-dialog receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
-        <div className="dialog-heading receipt-dialog-heading">
-          <div>
-            <span className="eyebrow">SAMPLE RECEIPT</span>
-            <h2 id="receipt-title">Receipt preview</h2>
-          </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close receipt preview"><X size={18} /></button>
-        </div>
+function readStoredValue(key, fallback) {
+  try { return JSON.parse(sessionStorage.getItem(key) || 'null') ?? fallback } catch { return fallback }
+}
 
-        <div className="receipt-paper">
-          <div className="receipt-brand">
-            <span className="brand-mark"><Wallet size={18} /></span>
-            <strong>Bahug Nawung Coffe POS</strong>
-            <small>Transaction preview · Not a real sale</small>
-          </div>
-          <div className="receipt-meta"><span>Receipt</span><strong>{demoReceiptNumber}</strong></div>
-          <div className="receipt-meta"><span>Order type</span><strong>{demoCartOrderType}</strong></div>
-          <div className="receipt-items">
-            {demoCartItems.map((item) => (
-              <div className="receipt-item" key={item.id}>
-                <div><strong>{item.quantity} × {item.name}</strong><span>{item.variant}</span><span>{item.modifiers}</span></div>
-                <b>{item.price}</b>
-              </div>
-            ))}
-          </div>
-          <div className="receipt-total"><span>Subtotal · demo</span><strong>{demoPosTotals.subtotal}</strong></div>
-          <div className="receipt-total receipt-grand-total"><span>Total · demo</span><strong>{demoPosTotals.total}</strong></div>
-          <div className="receipt-meta receipt-payment"><span>Payment method</span><strong>{paymentLabel}</strong></div>
-          <p className="receipt-thanks">Thank you · Sample receipt only</p>
-        </div>
+function hasValidSalePrice(value) {
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) && Number(value) > 0
+}
 
-        <p className="receipt-preview-note">Receipt values are static demo content. Printing is not connected.</p>
-        <div className="dialog-actions">
-          <button className="catalog-button button-quiet" type="button" onClick={onClose}>Close</button>
-          <button className="catalog-button button-primary" type="button" onClick={onPrint}><FileText size={15} aria-hidden="true" /> Print preview</button>
-        </div>
-      </section>
-    </div>
-  )
+function readStoredCart() {
+  const cart = readStoredValue(CART_STORAGE_KEY, [])
+  return Array.isArray(cart)
+    ? cart.filter((line) => Number.isInteger(line.variantId) && hasValidSalePrice(line.unitPrice) && Number.isInteger(line.quantity) && line.quantity > 0)
+    : []
 }
 
 function CheckoutPage() {
+  const [cart, setCart] = useState(readStoredCart)
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [cashTendered, setCashTendered] = useState('')
-  const [showConfirmation, setShowConfirmation] = useState(false)
-  const [showReceipt, setShowReceipt] = useState(false)
+  const [completedSale, setCompletedSale] = useState(() => readStoredValue(LAST_SALE_KEY, null))
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const subtotal = useMemo(() => cart.reduce((sum, line) => sum + Number(line.unitPrice) * line.quantity, 0), [cart])
   const selectedPayment = paymentMethods.find((method) => method.id === paymentMethod)
-  const paymentLabel = selectedPayment?.label || 'Cash'
+  const changeDue = Number(cashTendered || 0) - subtotal
 
-  function handleConfirmCheckout() {
-    // TODO (MANUAL): Implement checkout validation and submit the sale/payment to the backend.
-    // Expected input: order type, selected payment method, and any cash tender amount.
-    // Expected output: later, atomically record the sale and stock movements or show the backend error.
-    // Do not calculate change or trust the displayed demo totals here.
-    void cashTendered
-    void paymentMethod
+  useEffect(() => {
+    if (completedSale) {
+      sessionStorage.setItem(LAST_SALE_KEY, JSON.stringify(completedSale))
+    }
+  }, [completedSale])
+
+  async function completeSale() {
+    setError('')
+    if (!cart.length) {
+      setError('The order is empty. Return to the menu and add an item first.')
+      return
+    }
+    if (paymentMethod === 'cash' && (!cashTendered || Number(cashTendered) < subtotal)) {
+      setError('Enter cash received that covers the total.')
+      return
+    }
+
+    const token = sessionStorage.getItem('access_token')
+    if (!token) {
+      setError('Your session has expired. Sign in again.')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`${API_URL}/sales`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_method: paymentMethod,
+          cash_tendered: paymentMethod === 'cash' ? cashTendered : null,
+          items: cart.map((line) => ({ menu_variant_id: line.variantId, quantity: line.quantity })),
+        }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        const detail = data?.detail
+        const message = Array.isArray(detail) ? detail.map((entry) => entry.msg).join(' ') : detail
+        throw new Error(message || `Checkout failed (HTTP ${response.status}).`)
+      }
+      const sale = await response.json()
+      setCompletedSale(sale)
+      setCart([])
+      sessionStorage.removeItem(CART_STORAGE_KEY)
+      setCashTendered('')
+    } catch (requestError) {
+      setError(requestError.message || 'Could not complete checkout.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  function handlePrintReceipt() {
-    // TODO (MANUAL): Implement receipt printing after a real sale is confirmed.
-    // This preview must not print as a completed transaction.
+  function startNextSale() {
+    setCompletedSale(null)
+    sessionStorage.removeItem(LAST_SALE_KEY)
+    window.location.assign('/cashier')
   }
 
-  const paymentIcons = { cash: Wallet, card: CreditCard, ewallet: Smartphone }
-  const PaymentIcon = paymentIcons[paymentMethod]
+  return <CashierLayout>
+    <div className="checkout-page-heading"><div><span className="eyebrow">ORDER CHECKOUT</span><h1>{completedSale ? 'Sale completed' : 'Review and pay'}</h1><p>{completedSale ? 'The sale and ingredient use have been recorded.' : 'Confirm the order and record its payment.'}</p></div>{!completedSale && <a className="checkout-back-link" href="/cashier"><ArrowLeft size={15} aria-hidden="true" /> Back to menu</a>}</div>
+    <div className="demo-data-banner checkout-demo-banner" role="note"><span className="demo-banner-dot" />Payment is recorded as manually confirmed. No external card or e-wallet processor is connected; discounts and tax remain zero until shop rules are defined.</div>
 
-  return (
-    <CashierLayout>
-      <div className="checkout-page-heading">
-        <div>
-          <span className="eyebrow">ORDER CHECKOUT</span>
-          <h1>Review and pay</h1>
-          <p>Preview the order summary and payment details before a future checkout step.</p>
-        </div>
-        <a className="checkout-back-link" href="/cashier"><ArrowLeft size={15} aria-hidden="true" /> Back to menu</a>
-      </div>
-
-      <div className="demo-data-banner checkout-demo-banner" role="note">
-        <span className="demo-banner-dot" /> This is a checkout preview. No payment gateway, sale record, or ingredient deduction is connected.
-      </div>
-
-      <div className="checkout-grid">
-        <div className="checkout-main-column">
-          <section className="checkout-card" aria-labelledby="checkout-order-title">
-            <div className="checkout-section-heading">
-              <div>
-                <span className="eyebrow">ORDER SUMMARY</span>
-                <h2 id="checkout-order-title">Your order</h2>
-              </div>
-              <span className="checkout-order-type">{demoCartOrderType}</span>
-            </div>
-
-            <div className="checkout-item-list">
-              {demoCartItems.map((item) => (
-                <article className="checkout-item" key={item.id}>
-                  <div className="checkout-item-quantity">{item.quantity}</div>
-                  <div className="checkout-item-copy">
-                    <strong>{item.name}</strong>
-                    <span>{item.variant}</span>
-                    <small>{item.modifiers}</small>
-                  </div>
-                  <strong className="checkout-item-price">{item.price}</strong>
-                </article>
-              ))}
-            </div>
-
-            <div className="checkout-summary-totals">
-              <div><span>Subtotal <small>Demo</small></span><strong>{demoPosTotals.subtotal}</strong></div>
-              <div className="checkout-total-row"><span>Total <small>Demo</small></span><strong>{demoPosTotals.total}</strong></div>
-            </div>
-            <p className="checkout-policy-note">Discount and tax/fee rows are omitted until the shop rules are decided.</p>
-          </section>
-
-          <details className="checkout-feedback-examples">
-            <summary><AlertTriangle size={16} aria-hidden="true" /> Example checkout feedback states <span>Demo only</span></summary>
-            <div className="checkout-feedback-list">
-              {demoCheckoutFeedback.map((feedback) => (
-                <article className={`checkout-feedback-card feedback-${feedback.tone}`} key={feedback.id}>
-                  <strong>{feedback.title}</strong>
-                  <p>{feedback.message}</p>
-                  <small>Static UI example · not evaluated for this order</small>
-                </article>
-              ))}
-            </div>
-          </details>
-        </div>
-
-        <aside className="checkout-payment-card" aria-labelledby="payment-method-title">
-          <div className="checkout-section-heading">
-            <div>
-              <span className="eyebrow">PAYMENT</span>
-              <h2 id="payment-method-title">Payment method</h2>
-            </div>
-            <span className="payment-method-icon"><PaymentIcon size={18} aria-hidden="true" /></span>
-          </div>
-          <p className="payment-recording-note">Select a method to preview recording it. No card or e-wallet gateway is used.</p>
-
-          <fieldset className="payment-method-list">
-            <legend className="visually-hidden">Choose a payment method</legend>
-            {paymentMethods.map(({ id, label, detail, icon: Icon }) => (
-              <label className={`payment-method-option${paymentMethod === id ? ' is-selected' : ''}`} key={id}>
-                <input type="radio" name="payment-method" value={id} checked={paymentMethod === id} onChange={() => setPaymentMethod(id)} />
-                <span className="payment-option-icon"><Icon size={17} aria-hidden="true" /></span>
-                <span className="payment-option-copy"><strong>{label}</strong><small>{detail}</small></span>
-                <span className="payment-option-check" aria-hidden="true" />
-              </label>
-            ))}
-          </fieldset>
-
-          {paymentMethod === 'cash' && (
-            <div className="cash-payment-fields">
-              <label htmlFor="cash-tendered">Amount tendered</label>
-              <div className="checkout-currency-input"><span>$</span><input id="cash-tendered" type="number" inputMode="decimal" step="0.01" placeholder="Enter amount" value={cashTendered} onChange={(event) => setCashTendered(event.target.value)} /></div>
-              <span className="catalog-field-hint">Amount entry preview only.</span>
-              <div className="change-display"><span>Change due</span><strong>—</strong><small>Change is not calculated in this preview.</small></div>
-            </div>
-          )}
-
-          {paymentMethod !== 'cash' && (
-            <div className="record-payment-placeholder">
-              <Check size={16} aria-hidden="true" />
-              <span>Payment method will be recorded manually. No payment details are collected here.</span>
-            </div>
-          )}
-
-          <button className="checkout-review-button" type="button" onClick={() => setShowConfirmation(true)}>
-            Review demo order <ArrowRight size={16} aria-hidden="true" />
-          </button>
-          <button className="checkout-receipt-link" type="button" onClick={() => setShowReceipt(true)}>
-            Preview sample receipt
-          </button>
-          <p className="checkout-no-submit-note">Review and receipt buttons open UI previews only. Nothing is saved.</p>
-        </aside>
-      </div>
-
-      {showConfirmation && (
-        <CheckoutConfirmationDialog
-          paymentLabel={paymentLabel}
-          onClose={() => setShowConfirmation(false)}
-          onConfirm={handleConfirmCheckout}
-        />
-      )}
-      {showReceipt && (
-        <ReceiptPreviewDialog
-          paymentLabel={paymentLabel}
-          onClose={() => setShowReceipt(false)}
-          onPrint={handlePrintReceipt}
-        />
-      )}
-    </CashierLayout>
-  )
+    {completedSale ? <section className="checkout-card checkout-success-card" aria-labelledby="sale-success-title"><span className="checkout-confirm-icon"><Check size={19} aria-hidden="true" /></span><h2 id="sale-success-title">Sale {completedSale.sale_number}</h2><p>Payment recorded by {completedSale.cashier_name}.</p><div className="receipt-paper"><strong>Bahug Nawung Coffe POS</strong><span>{new Date(completedSale.completed_at).toLocaleString()}</span><span>Sale: {completedSale.sale_number}</span><div className="receipt-items">{completedSale.items.map((item) => <div className="receipt-item" key={item.id}><div><strong>{item.quantity} × {item.item_name}</strong><span>{item.variant_name}</span></div><b>{formatAmount(item.line_total)}</b></div>)}</div><div className="receipt-total"><span>Subtotal</span><strong>{formatAmount(completedSale.subtotal)}</strong></div><div className="receipt-total receipt-grand-total"><span>Total</span><strong>{formatAmount(completedSale.total_amount)}</strong></div><div className="receipt-meta receipt-payment"><span>Payment</span><strong>{completedSale.payment_method}</strong></div></div><div className="dialog-actions"><button className="catalog-button button-quiet" type="button" onClick={() => window.print()}><FileText size={15} /> Print receipt</button><button className="catalog-button button-primary" type="button" onClick={startNextSale}>Start next sale</button><a className="catalog-button button-quiet" href="/cashier/sales">Sales history</a></div></section> : <div className="checkout-grid">
+      <section className="checkout-card" aria-labelledby="checkout-order-title"><div className="checkout-section-heading"><div><span className="eyebrow">CURRENT ORDER</span><h2 id="checkout-order-title">Order summary</h2></div><span>{cart.reduce((sum, line) => sum + line.quantity, 0)} items</span></div>
+        {cart.length ? <div className="checkout-item-list">{cart.map((item) => <article className="checkout-item" key={item.variantId}><div className="checkout-item-quantity">{item.quantity}</div><div className="checkout-item-copy"><strong>{item.itemName}</strong><span>{item.variantName}</span></div><strong className="checkout-item-price">{formatAmount(Number(item.unitPrice) * item.quantity)}</strong></article>)}</div> : <p className="catalog-table-footnote">No items in the order. <a href="/cashier">Return to the menu.</a></p>}
+        <div className="checkout-summary-totals"><div><span>Subtotal</span><strong>{formatAmount(subtotal)}</strong></div><div className="checkout-total-row"><span>Total</span><strong>{formatAmount(subtotal)}</strong></div></div>
+      </section>
+      <aside className="checkout-payment-card" aria-labelledby="payment-method-title"><div className="checkout-section-heading"><div><span className="eyebrow">PAYMENT</span><h2 id="payment-method-title">Payment method</h2></div></div><div className="payment-method-list">{paymentMethods.map((method) => { const Icon = method.icon; return <label className={`payment-method-option${paymentMethod === method.id ? ' is-selected' : ''}`} key={method.id}><input type="radio" name="payment-method" value={method.id} checked={paymentMethod === method.id} onChange={() => setPaymentMethod(method.id)} /><span className="payment-option-icon"><Icon size={17} aria-hidden="true" /></span><span className="payment-option-copy"><strong>{method.label}</strong><small>{method.detail}</small></span><span className="payment-option-check" /></label> })}</div>
+        {paymentMethod === 'cash' && <div className="cash-payment-fields"><label htmlFor="cash-tendered">Cash received</label><div className="checkout-currency-input"><input id="cash-tendered" type="number" min={subtotal} step="0.01" inputMode="decimal" placeholder="0.00" value={cashTendered} onChange={(event) => setCashTendered(event.target.value)} /></div><div className="change-display"><span>Change due</span><strong>{formatAmount(Math.max(0, changeDue))}</strong></div></div>}
+        {error && <p className="field-error" role="alert">{error}</p>}
+        <button className="checkout-review-button" type="button" disabled={!cart.length || isSubmitting} onClick={completeSale}>{isSubmitting ? 'Recording sale...' : `Complete sale · ${formatAmount(subtotal)}`}</button><p className="checkout-no-submit-note">{selectedPayment?.label} is recorded when you complete this sale.</p>
+      </aside>
+    </div>}
+  </CashierLayout>
 }
 
 export default CheckoutPage

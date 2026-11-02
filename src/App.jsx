@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { ArrowUpRight, BadgeCheck, Boxes, CircleDollarSign, ShoppingBag } from 'lucide-react'
 import './App.css'
 import LoginPage from './pages/auth/LoginPage.jsx'
@@ -8,7 +9,7 @@ import InventoryPage from './pages/admin/InventoryPage.jsx'
 import PosPage from './pages/cashier/PosPage.jsx'
 import CheckoutPage from './pages/cashier/CheckoutPage.jsx'
 import SalesHistoryPage from './pages/cashier/SalesHistoryPage.jsx'
-import { RecipesPage, ReportsPage, SuppliersPage, UsersPage } from './pages/admin/AdminOperationsPages.jsx'
+import { ReportsPage, SuppliersPage, UsersPage } from './pages/admin/AdminOperationsPages.jsx'
 
 const plannedAreas = [
   {
@@ -29,7 +30,16 @@ const plannedAreas = [
 ]
 
 function App() {
-  const pathname = window.location.pathname
+  const [pathname, setPathname] = useState(window.location.pathname)
+
+  useEffect(() => {
+    function syncPathname() {
+      setPathname(window.location.pathname)
+    }
+
+    window.addEventListener('popstate', syncPathname)
+    return () => window.removeEventListener('popstate', syncPathname)
+  }, [])
 
   if (pathname === '/login' || pathname === '/admin/login') {
     return <LoginPage audience={pathname === '/admin/login' ? 'admin' : 'cashier'} />
@@ -39,7 +49,7 @@ function App() {
   if (pathname === '/admin/products') return <ProductsPage />
   if (pathname === '/admin/categories') return <CategoriesPage />
   if (pathname === '/admin/inventory') return <InventoryPage />
-  if (pathname === '/admin/recipes') return <RecipesPage />
+  if (pathname === '/admin/recipes') return <ProductsPage />
   if (pathname === '/admin/suppliers') return <SuppliersPage />
   if (pathname === '/admin/users') return <UsersPage />
   if (pathname === '/admin/reports') return <ReportsPage />
